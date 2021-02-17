@@ -1,0 +1,39 @@
+= 2020-02-xing-rnaseq Public
+Paul Klemm <paul.klemm@sf.mpg.de>
+:toc:
+:repo: https://github.com/bruening-lab/Sert-Ox1R
+:releases: {repo}/releases/tag
+:issues: {repo}/issues
+:docs: https://pages.github.com/bruening-lab/Sert-Ox1R
+:images: images
+:GSE: TODO
+
+== Overview
+
+This repo contains the RNA-Seq analysis workflow for TODO.
+
+== Reproduce Analysis
+
+=== RNA-Seq Analysis
+
+The RNA-Seq analysis pipeline is based on the link:https://nf-co.re/rnaseq[nf-core/rnaseq] and runs on a high-performance-compute cluster equipped with Singularity for running application containers and SLURM for Job scheduling.
+
+1. Download the FASTQ file from GEO series link:https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc={GSE}[{GSE}]. Save them in this repository with `nfcore-rnaseq-pipeline/raw_data`
+2. Follow the installation instructions for link:https://nf-co.re/rnaseq[nf-core/rnaseq] pipeline.
+3. Adapt the paths to Ensembl release 97 in file `mpisf-rnaseq.config` (see `genomes` section of the file) as well as `tmp` folder in `runOptions` and the `process` section
+  - You can of course use a different release, but then you likely won't get the exact same results
+  - For more details on nf-core/rnaseq configuration files, check link:https://nf-co.re/usage/configuration[the project documentation]
+4. Navigate to the `analysis/bat` folder and run `make`
+
+=== sc-Seq Analysis
+
+1. Download the public sc-Seq files from Huang et al. here: link:https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/QB5CC8[https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/QB5CC8].
+2. Move the files to a folder in the root of this project, called `sc_rnaseq_seurat_data`.
+3. Run the command below
+
+```r
+rmarkdown::render(
+  "analysis/scrnaseq/scrnaseq.Rmd",
+  params = list(path_seurat = "sc_rnaseq_seurat_data", path_out = "./")
+)
+```

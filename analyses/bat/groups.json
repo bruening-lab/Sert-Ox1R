@@ -1,0 +1,16 @@
+{
+  "groups": {
+    "BAT_CTRL": [
+      "BAT_10684_CTRL",
+      "BAT_11253_CTRL",
+      "BAT_11560_CTRL",
+      "BAT_11563_CTRL"
+    ],
+    "BAT_Sert-Ox1R": [
+      "BAT_11708_Sert-Ox1R",
+      "BAT_11243_Sert-Ox1R",
+      "BAT_11613_Sert-Ox1R",
+      "BAT_11601_Sert-Ox1R"
+    ]
+  }
+}

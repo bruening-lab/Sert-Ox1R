@@ -1,0 +1,329 @@
+---
+title: "Xing Single Cell Data Analysis"
+output:
+  html_document:
+    code_folding: hide
+    toc: TRUE
+    fig_width: 12
+    fig_height: 6
+params:
+  path_seurat: ""
+  path_out: ""
+---
+
+We want to find out if the serotonergic neurons of paper [Molecular and anatomical organization of the dorsal raphe nucleus](10.7554/eLife.46464) contain `Hcrtr1` or `Hcrtr2`.
+See issue [Check genes in scRNASeq paper #5](https://github.sf.mpg.de/bruening-lab/2020-02-xing-rnaseq/issues/5) for details.
+
+```{r setup, message = FALSE, warning = FALSE, cache = TRUE}
+
+library(magrittr)
+# Required to properly load the seurat file
+library(Seurat)
+library(rmyknife)
+
+# Helper functions
+get_markers <- function(seurat_dat, only_positive_markers = TRUE) {
+  Seurat::FindAllMarkers(
+    seurat_dat,
+    only.pos = only_positive_markers,
+    min.pct = 0.25,
+    logfc.threshold = 0.25
+  ) %>%
+    # Arrange by descending average fold change per cluster
+    dplyr::as_tibble() %>%
+    dplyr::group_by(cluster) %>%
+    dplyr::arrange(dplyr::desc(avg_logFC), .by_group = TRUE) %>%
+    dplyr::ungroup() %>%
+    return()
+}
+
+#' Print standard DT::datatable
+#' @import DT magrittr
+#' @export
+#' @param dat Dataframe to print
+standard_datatable <- function(dat) {
+  DT::datatable(
+    data = dat,
+    extensions = "Buttons",
+    options = list(
+      dom = "Bfrtip",
+      buttons = c("copy", "csv", "excel", "pdf", "print")
+    )
+  ) %>%
+    return()
+}
+
+rmarkdown_params <- list()
+rmarkdown_params$path_seurat <- params$path_seurat
+rmarkdown_params$path_out <- params$path_out
+
+tibble::tibble(
+  name = c("Path to Seurat Files", "Output path"),
+  setting = c(rmarkdown_params$path_seurat, rmarkdown_params$path_out)
+) %>%
+  knitr::kable()
+
+neurons <-
+  file.path(rmarkdown_params$path_seurat, "neurons.rds") %>%
+  readRDS() %>%
+  # The seurat object was created with an old version. This updates it
+  # to the new strucutre
+  Seurat::UpdateSeuratObject()
+```
+
+First, look at the TSNE plot of the `neurons` data.
+
+```{r dimplot, cache = TRUE}
+
+Seurat::DimPlot(neurons, reduction = "tsne")
+```
+
+## Do `Hcrtr1` or `Hcrtr2` act as cluster markers (own clustering)?
+
+Now let's only filter for the serotonergic neurons.
+
+```{r filter_serotonergic, message = FALSE, warning = FALSE, cache = TRUE}
+
+serotonergic_neurons <-
+  neurons %>%
+  subset(subset = Curated_cellTypeLabels == "Serotonergic Neurons") %>%
+  Seurat::RunPCA() %>%
+  Seurat::RunUMAP(dims = 1:10)
+
+serotonergic_neurons %>%
+  Seurat::DimPlot(reduction = "tsne")
+```
+
+We will now conduct our own clustering of the serotonergic neurons.
+
+```{r cluster, message = FALSE, warning = FALSE, cache = TRUE}
+
+serotonergic_neurons %<>%
+  rmyknife::get_seurat_clustering(
+    max_dimension_used_for_clustering = 20,
+    # Setting a smaller resolution (default = 0.8) to find fewer clusters
+    cluster_resolution = 0.8
+  )
+
+serotonergic_neurons %>%
+  Seurat::DimPlot(reduction = "umap")
+```
+
+The result are four clusters.
+Lets check if `Hcrtr1` or `Hcrtr2` are positive cluster markers.
+
+```{r get_marker, message = FALSE, warning = FALSE, cache = TRUE}
+
+serotonergic_markers <-
+  serotonergic_neurons %>%
+  get_markers()
+
+serotonergic_markers %>%
+  dplyr::filter(gene %in% c("Hcrtr1", "Hcrtr2")) %>%
+  knitr::kable()
+
+# Save markers to package
+usethis::use_data(serotonergic_markers, overwrite = TRUE)
+```
+
+`Hcrtr1` is actually a marker for cluster 3.
+
+Here are the plots of "Hcrtr1" and "Hcrtr2".
+
+```{r plot_hcrtr, cache = TRUE}
+
+Seurat::VlnPlot(serotonergic_neurons, features = c("Hcrtr1", "Hcrtr2"), slot = "counts", log = TRUE)
+```
+
+```{r feature_plot, fig.width = 15, fig.height = 8, cache = TRUE}
+Seurat::FeaturePlot(serotonergic_neurons, features = c("Hcrtr1", "Hcrtr2"))
+```
+
+We can see that the baseline expression of `Hcrtr1` and `Hcrtr2` is pretty low, barely picked up by the sequencing.
+
+Here is the full table of cluster markers.
+
+```{r cluster_markers, cache = TRUE}
+
+serotonergic_markers %>%
+  standard_datatable()
+```
+
+## Do `Hcrtr1` or `Hcrtr2` act as cluster markers (clustering of Huang et al.)?
+
+The complete cluster markers were not reported with the paper [Molecular and anatomical organization of the dorsal raphe nucleus](10.7554/eLife.46464).
+The authors provided us with the list of genes that act as markers for their clusters.
+
+> We used the FindAllMarkersNode function in Seurat v2.3.1 + MAST v1.4.1 to find genes that are differentially expressed between the 5-HT neuron subtypes we described in the paper. I chose to use this instead of FindAllMarkers since some of the clusters, particularly 5-HT-I and 5-HT-II, are very similar, so the output of FindAllMarkers was not as informative for finding genes that were differentially expressed between these two clusters.
+> 
+> I've attached a CSV file with the DE genes, and the notebook that contains the cluster tree with the nodes labeled. Please note that the column named "cluster" in the CSV file refers to the node number in the cluster tree (section 4.1 in the notebook). For each node, Group 1 is the left branch, and Group 2 is the right, so positive logFC values indicate enrichment in the group to the left of the node, while negative values indicate enrichment in the group to the right.
+> 
+> As for the differences in clustering, we did use the aligned CCA space instead of PCA space as you have noted, but another likely reason that you get only 4 clusters instead of our 5 clusters, besides the clustering parameters, is that we had to manually identify the 5-HT-V cluster. We manually separated the Met+ 5-HT-V cluster from the 5-HT-IV cluster because evidence from previous studies, ABA ISH data, and our preliminary analysis of the 5-HT neuron subset in one of the replicates (clustering in PCA space) indicated that these are distinct from the other 5-HT neurons. Other studies that have come out since are consistent with this as well (e.g. Okaty et al., bioRxiv 2020). We suspected that these cells were not "clustered out" by the FindClusters function in the aligned CCA space because there are very few of them in our dataset, being more subject to variability in tissue collection between replicates since they are very caudal, and some potential effects of using the aligned CCA space instead of PCA space.
+
+Here is the complte list they provided us with.
+
+```{r markers_huangetal, cache = TRUE}
+
+bruening.2020.02.xing.rnaseq::serotonergic_markers_external %>%
+  standard_datatable()
+```
+
+Next, we check the clusters for `Hcrtr1` and `Hcrtr2`.
+
+```{r markers_huangetal_check_hcrtr, cache = TRUE}
+
+bruening.2020.02.xing.rnaseq::serotonergic_markers_external %>%
+  dplyr::filter(gene %in% c("Hcrtr1", "Hcrtr2")) %>%
+  knitr::kable()
+```
+
+We only find one hit in `cluster 7`.
+
+# Are Serotonergic neurons mutually exclusive enriched for `Hcrtr1` or `Hcrtr2`?
+
+For this, we look at all cells containing `Hcrtr1` or `Hcrtr2`.
+
+```{r count_analysis, cache = TRUE}
+
+# Create a tidy data set of all counts
+serotonergic_neurons_counts <- rmyknife::get_gene_counts_per_cell(serotonergic_neurons, c("Hcrtr1", "Hcrtr2"), tidy = FALSE)
+
+tibble::tibble(
+  condition = c("no Hcrtr1, no Hcrtr2", "only Hcrtr1", "only Hcrtr2", "both Hcrtr1 and Hcrtr2"),
+  cell_count = c(
+    serotonergic_neurons_counts %>% dplyr::filter(Hcrtr1 == 0 & Hcrtr2 == 0) %>% nrow(),
+    serotonergic_neurons_counts %>% dplyr::filter(Hcrtr1 > 0 & Hcrtr2 == 0) %>% nrow(),
+    serotonergic_neurons_counts %>% dplyr::filter(Hcrtr1 == 0 & Hcrtr2 > 0) %>% nrow(),
+    serotonergic_neurons_counts %>% dplyr::filter(Hcrtr1 > 0 & Hcrtr2 > 0) %>% nrow()
+  )
+) %>%
+  knitr::kable()
+```
+
+Therefore, 36% of cells expressing `Hcrtr2` also express `Hcrtr1`, but only 11% of cells that express `Hcrtr1` also express `Hcrtr2`.
+
+```{r add-hcrtr-metadata, cache = TRUE}
+
+hcrtr_metadata <- serotonergic_neurons_counts %>%
+  dplyr::mutate(hcrtr_class = ifelse(
+    Hcrtr1 == 0 & Hcrtr2 == 0, "expressing none", ifelse(
+      Hcrtr1 > 0 & Hcrtr2 == 0, "expressing Hcrtr1", ifelse(
+        Hcrtr1 == 0 & Hcrtr2 > 0, "expressing Hcrtr2", ifelse(
+          Hcrtr1 > 0 & Hcrtr2 > 0, "expressing both", NA
+        )
+      )
+    )
+  )) %>%
+  dplyr::select(cell_id, hcrtr_class)
+
+serotonergic_neurons_hcrtr_de <-
+  neurons %>%
+  subset(subset = Curated_cellTypeLabels == "Serotonergic Neurons") %>%
+  Seurat::AddMetaData(hcrtr_metadata %>% tibble::column_to_rownames("cell_id"))
+
+# Print the head of the new cell ID just to be sure
+serotonergic_neurons_hcrtr_de@meta.data %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column(var = "cell_id") %>%
+  tibble::as_tibble() %>%
+  dplyr::select(cell_id, hcrtr_class, dplyr::everything()) %>%
+  head(20) %>%
+  knitr::kable()
+
+hcrtr_metadata %>%
+  head(20) %>%
+  knitr::kable()
+```
+
+Now we conduct a DE analysis based on the hcrtr groups.
+
+```{r hcrtr-de, cache = TRUE}
+
+Seurat::DefaultAssay(serotonergic_neurons_hcrtr_de) <- "RNA"
+# Prepare the identificators for the DE analysis
+# From https://github.com/satijalab/seurat/issues/2367#issuecomment-561913197
+serotonergic_neurons_hcrtr_de$celltype.condition <- serotonergic_neurons_hcrtr_de$hcrtr_class
+serotonergic_neurons_hcrtr_de$celltype <- Seurat::Idents(serotonergic_neurons_hcrtr_de)
+Seurat::Idents(serotonergic_neurons_hcrtr_de) <- "celltype.condition"
+
+hcrtr_markers <-
+  dplyr::bind_rows(
+    serotonergic_neurons_hcrtr_de %>%
+      Seurat::FindMarkers(
+        ident.1 = "expressing both",
+        min.pct = 0.25,
+        logfc.threshold = 0.25,
+        verbose = FALSE
+      ) %>%
+      tibble::rownames_to_column(var = "gene") %>%
+      tibble::as_tibble() %>%
+      dplyr::mutate(comparison = "expressing both"),
+    serotonergic_neurons_hcrtr_de %>%
+      Seurat::FindMarkers(
+        ident.1 = "expressing none",
+        min.pct = 0.25,
+        logfc.threshold = 0.25,
+        verbose = FALSE
+      ) %>%
+      tibble::rownames_to_column(var = "gene") %>%
+      tibble::as_tibble() %>%
+      dplyr::mutate(comparison = "expressing none"),
+    serotonergic_neurons_hcrtr_de %>%
+      Seurat::FindMarkers(
+        ident.1 = "expressing Hcrtr1",
+        min.pct = 0.25,
+        logfc.threshold = 0.25,
+        verbose = FALSE
+      ) %>%
+      tibble::rownames_to_column(var = "gene") %>%
+      tibble::as_tibble() %>%
+      dplyr::mutate(comparison = "expressing Hcrtr1"),
+    serotonergic_neurons_hcrtr_de %>%
+      Seurat::FindMarkers(
+        ident.1 = "expressing Hcrtr2",
+        min.pct = 0.25,
+        logfc.threshold = 0.25,
+        verbose = FALSE
+      ) %>%
+      tibble::rownames_to_column(var = "gene") %>%
+      tibble::as_tibble() %>%
+      dplyr::mutate(comparison = "expressing Hcrtr2"),
+    serotonergic_neurons_hcrtr_de %>%
+      Seurat::FindMarkers(
+        ident.1 = "expressing Hcrtr1",
+        ident.2 = "expressing Hcrtr2",
+        min.pct = 0.25,
+        logfc.threshold = 0.25,
+        verbose = FALSE
+      ) %>%
+      tibble::rownames_to_column(var = "gene") %>%
+      tibble::as_tibble() %>%
+      dplyr::mutate(comparison = "expressing Hcrtr1 vs expressing Hcrtr2")
+  ) %>%
+  # Filter only for significant genes
+  dplyr::filter(p_val_adj <= 0.05)
+
+hcrtr_markers %>%
+  # Print as data table
+  standard_datatable()
+
+hcrtr_markers %>%
+  # Comply with request of Xing in "Add ensembl_gene_id and external_gene_name to Seurat output" #10
+  dplyr::mutate(
+    external_gene_name = rmyknife::get_gene_name_from_synonym(gene)
+  ) %>%
+  rmyknife::attach_ensembl_gene_id_from_name(gene_name_var = "external_gene_name") %>%
+  dplyr::select(ensembl_gene_id, external_gene_name, dplyr::everything()) %>%
+  dplyr::select(-gene) %>%
+  # Export as Excel sheet
+  WriteXLS::WriteXLS(
+    ExcelFileName = file.path(rmarkdown_params$path_out, "hcrtr_scrnaseq_markers.xlsx"),
+    AdjWidth = TRUE,
+    AutoFilter = TRUE,
+    BoldHeaderRow = TRUE,
+    FreezeRow = 1,
+    SheetNames = "Hcrtr Markers"
+  )
+
+usethis::use_data(hcrtr_markers, overwrite = TRUE)
+```
