@@ -10,6 +10,8 @@ Paul Klemm <paul.klemm@sf.mpg.de>
 
 == Overview
 
+IMPORTANT: This repo is part of a publication that is subject to a peer review process. Therefore, the source code is freely available, but the data deposited at GEO will be made available upon publishing the paper.
+
 This repo contains the RNA-Seq analysis workflow for TODO.
 
 == Reproduce Analysis
