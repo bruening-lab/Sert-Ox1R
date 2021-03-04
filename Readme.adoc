@@ -6,7 +6,7 @@ Paul Klemm <paul.klemm@sf.mpg.de>
 :issues: {repo}/issues
 :docs: https://pages.github.com/bruening-lab/Sert-Ox1R
 :images: images
-:GSE: TODO
+:GSE: GSE168203
 
 == Overview
 
