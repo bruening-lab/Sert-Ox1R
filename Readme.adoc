@@ -12,7 +12,7 @@ Paul Klemm <paul.klemm@sf.mpg.de>
 
 IMPORTANT: This repo is part of a publication that is subject to a peer review process. Therefore, the source code is freely available, but the data deposited at GEO will be made available upon publishing the paper.
 
-This repo contains the RNA-Seq analysis workflow for TODO.
+This repo contains the RNA-Seq analysis workflow for "Orexin Receptors 1 and 2 in Serotonergic Neurons Differentially Regulate Peripheral Glucose Metabolism in Obesity".
 
 == Reproduce Analysis
 
